@@ -17,8 +17,11 @@ VIS header structure:
 from __future__ import annotations
 
 import enum
+import functools
+import math
 
 import numpy as np
+import scipy.fft
 
 from .constants import (
     FREQ_LEADER,
@@ -97,34 +100,52 @@ def _classify_tone(samples: np.ndarray, sample_rate: int = SAMPLE_RATE, offset: 
     return best_freq
 
 
+@functools.lru_cache(maxsize=8)
+def _leader_fft_constants(n: int, sample_rate: int) -> tuple[np.ndarray, float, int, int]:
+    """Hann window, bin spacing and 300-3000 Hz bin bounds for _leader_offset."""
+    window = np.hanning(n)
+    window.flags.writeable = False
+    # Bin spacing as np.fft.rfftfreq computes it
+    df = 1.0 / (_FFT_SIZE * (1.0 / sample_rate))
+    return window, df, math.ceil(300 / df), math.floor(3000 / df)
+
+
 def _leader_offset(samples: np.ndarray, sample_rate: int = SAMPLE_RATE) -> float | None:
     """Tuning offset (Hz) if the window is a clean tone within reach of the leader, else None."""
     if len(samples) < 16:
         return None
-    spectrum = np.abs(np.fft.rfft(samples * np.hanning(len(samples)), n=_FFT_SIZE)) ** 2
-    freqs = np.fft.rfftfreq(_FFT_SIZE, 1.0 / sample_rate)
+    window, df, lo, hi = _leader_fft_constants(len(samples), sample_rate)
+    # Only the 300-3000 Hz bins (plus one either side for interpolation) are
+    # used, so the power is computed for that slice alone. Windowing straight
+    # into a zero-padded buffer saves rfft a padding copy
+    n = min(len(samples), _FFT_SIZE)
+    padded = np.zeros(_FFT_SIZE)
+    np.multiply(samples[:n], window[:n], out=padded[:n])
+    spectrum = scipy.fft.rfft(padded)[lo - 1 : hi + 2]
+    spectrum = np.abs(spectrum) ** 2
 
     # Strongest tone anywhere in the audio band, so a nearby 1500 Hz tone's
     # skirt at the edge of the leader range is not mistaken for a leader
-    voice = (freqs >= 300) & (freqs <= 3000)
-    peak = int(np.flatnonzero(voice)[np.argmax(spectrum[voice])])
-    if abs(freqs[peak] - FREQ_LEADER) > MAX_TUNING_OFFSET:
+    voice = spectrum[1 : hi - lo + 2]
+    peak = 1 + voice.argmax().item()
+    peak_freq = (lo - 1 + peak) * df
+    if abs(peak_freq - FREQ_LEADER) > MAX_TUNING_OFFSET:
         return None
 
     # Reject noise and busy audio: most of the 300-3000 Hz energy must sit
     # in the main lobe around the peak
-    total = float(spectrum[voice].sum())
-    near = np.abs(freqs - freqs[peak]) <= 150
-    if total <= 0 or float(spectrum[near].sum()) / total < LEADER_PURITY:
+    total = voice.sum().item()
+    lobe = int(150 // df)
+    near = spectrum[max(peak - lobe, 0) : peak + lobe + 1].sum().item()
+    if total <= 0 or near / total < LEADER_PURITY:
         return None
 
     # Parabolic interpolation between bins for a finer peak estimate
-    peak_freq = float(freqs[peak])
     if 0 < peak < len(spectrum) - 1:
         a, b, c = spectrum[peak - 1], spectrum[peak], spectrum[peak + 1]
         denom = a - 2 * b + c
         if denom != 0:
-            peak_freq += 0.5 * (a - c) / denom * (freqs[1] - freqs[0])
+            peak_freq += 0.5 * (a - c) / denom * df
     return peak_freq - FREQ_LEADER
 
 
