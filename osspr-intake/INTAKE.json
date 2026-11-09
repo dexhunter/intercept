@@ -1,0 +1,43 @@
+[
+  {
+    "upstream_repo": "smittix/intercept",
+    "head_sha": "947d7eff14dc948416559de13b26fa7771bd87d9",
+    "file": "utils/wefax.py",
+    "function": "_goertzel_mag",
+    "native_test_cmd": "python -m pytest tests/test_wefax.py::TestWeFaxDecoder::test_goertzel_mag_detects_tone tests/test_wefax.py::TestWeFaxDecoder::test_goertzel_mag_rejects_wrong_freq tests/test_wefax.py::TestWeFaxDecoder::test_detect_tone_start -q",
+    "bench_cmd": "python osspr-intake/harness/bench_wefax_goertzel_mag.py",
+    "baseline_median_ms": 3250.7212,
+    "baseline_noise_pct": 4.8716,
+    "tests_pass_on_baseline": true,
+    "workload": "Ten minutes of HF weather-fax scanning at 22050 Hz: 100 ms chunks, five Goertzel tones per chunk (300 Hz start tone plus the four _detect_tone references), on a 300 Hz tone with a weak 1900 Hz carrier.",
+    "notes": "The body is a scalar Python recurrence over 2205 samples, and the scanner calls it five times per 100 ms for the whole time it is waiting for a fax. The same recurrence in SSTV goertzel was moved to scipy.signal.lfilter; doing that here, or updating all five tones in one pass, keeps the magnitude and drops the interpreter loop. Open upstream PRs do not edit utils/wefax.py. This is not the merged SSTV goertzel and not vis._leader_offset."
+  },
+  {
+    "upstream_repo": "smittix/intercept",
+    "head_sha": "947d7eff14dc948416559de13b26fa7771bd87d9",
+    "file": "utils/morse.py",
+    "function": "MorseDecoder.process_block",
+    "native_test_cmd": "python -m pytest tests/test_morse.py::TestDropoutTolerance::test_dah_with_mid_gap_produces_single_dah tests/test_morse.py::TestTimingAndWpmEstimator::test_timing_classifier_distinguishes_dit_and_dah tests/test_morse.py::TestTimingAndWpmEstimator::test_wpm_estimator_sanity tests/test_morse.py::TestMorseIntegration::test_decode_morse_wav_contains_expected_phrase -q",
+    "bench_cmd": "python osspr-intake/harness/bench_morse_process_block.py",
+    "baseline_median_ms": 1079.356,
+    "baseline_noise_pct": 1.4965,
+    "tests_pass_on_baseline": true,
+    "workload": "Four back-to-back 60 s recordings of 8 kHz 16-bit CW (700 Hz, keyed ~3 Hz, manual 15 WPM, tone tracking off), each passed to process_block in one call.",
+    "notes": "process_block unpacks the entire buffer into a Python list of ints, then every 160-sample block copies a prefix out and deletes it. Deleting the front of a list shifts the tail, so one recorded minute is quadratic. Consuming by index, or keeping the pending samples in a numpy array, preserves the block decisions and the event list. Open upstream PRs do not edit utils/morse.py. The live reader chunks at 2048 samples; this workload is the offline one-shot the function actually implements."
+  },
+  {
+    "upstream_repo": "smittix/intercept",
+    "head_sha": "947d7eff14dc948416559de13b26fa7771bd87d9",
+    "file": "utils/subghz_inspect.py",
+    "function": "read_iq_window",
+    "native_test_cmd": "python -m pytest tests/test_subghz_inspect.py::TestSignalHelpers::test_read_iq_window -q",
+    "metric_kind": "peak_memory_bytes",
+    "baseline_value": 129724416,
+    "baseline_noise_pct": 0.0,
+    "metric_benchmark": "python osspr-intake/harness/peak_mem_read_iq_window.py",
+    "labeled_data": null,
+    "tests_pass_on_baseline": true,
+    "workload": "Largest offline Sub-GHz inspect window: 2.0 s of HackRF cs8 at the mode default 2_000_000 samples/s (8 MB on disk, 4e6 complex samples). Peak is ru_maxrss of a fresh process that only performs that read.",
+    "notes": "read_iq_window is the first step of inspect_window, before decimation. It widens the int8 capture to a full float32 array, then builds complex64 from two strided copies, so the process high-water mark sits well above the 32 MB result. Filling one complex64 buffer from the int8 bytes keeps the same sample values and drops those temporaries. Open upstream PRs do not edit utils/subghz_inspect.py."
+  }
+]
