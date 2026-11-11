@@ -1,0 +1,60 @@
+[
+  {
+    "upstream_repo": "smittix/intercept",
+    "head_sha": "6bd91b6a38e5c1d2bb4a8fbe6335d5b384b091f6",
+    "file": "utils/waterfall_fft.py",
+    "function": "cu8_to_complex",
+    "native_test_cmd": "pytest tests/test_waterfall_fft.py::TestCu8ToComplex -q",
+    "bench_cmd": "python3 osspr-intake/harness/cu8_peak_memory.py",
+    "metric_kind": "peak_memory_bytes",
+    "baseline_value": 19200724,
+    "baseline_noise_pct": 0.0006,
+    "metric_benchmark": "python3 osspr-intake/harness/cu8_peak_memory.py",
+    "labeled_data": null,
+    "tests_pass_on_baseline": true,
+    "workload": "One listening-post waterfall frame of HackRF CU8 at 20 Msps and 25 fps (800000 I/Q pairs), the buffer fft_reader passes to cu8_to_complex.",
+    "notes": "The conversion astype's the whole byte buffer to float32, subtracts and divides into further full-size arrays, then copies both strided I and Q slices before building complex64. Scaling blocks straight into the result's float view keeps the traced peak at the 6.4MB output instead of 19.2MB, and the samples stay identical."
+  },
+  {
+    "upstream_repo": "smittix/intercept",
+    "head_sha": "6bd91b6a38e5c1d2bb4a8fbe6335d5b384b091f6",
+    "file": "utils/subghz_inspect.py",
+    "function": "envelope_columns",
+    "native_test_cmd": "pytest tests/test_subghz_inspect.py::TestSignalHelpers -q",
+    "bench_cmd": "python3 osspr-intake/harness/envelope_peak_memory.py",
+    "metric_kind": "peak_memory_bytes",
+    "baseline_value": 9471705,
+    "baseline_noise_pct": 0.0014,
+    "metric_benchmark": "python3 osspr-intake/harness/envelope_peak_memory.py",
+    "labeled_data": null,
+    "tests_pass_on_baseline": true,
+    "workload": "Amplitude columns for a 2 second Sub-GHz inspect window after decimation to 1 MS/s (2000000 complex64 samples), the maximum window inspect_window will plot.",
+    "notes": "np.abs allocates a full float amplitude array before the column max. Taking the max in blocks produces the same 40000-column list and drops the traced peak from about 9.5MB to about 1.6MB."
+  },
+  {
+    "upstream_repo": "smittix/intercept",
+    "head_sha": "6bd91b6a38e5c1d2bb4a8fbe6335d5b384b091f6",
+    "file": "utils/bluetooth/aggregator.py",
+    "function": "DeviceAggregator._update_rssi_stats",
+    "native_test_cmd": "pytest tests/test_bluetooth_aggregator.py -q",
+    "bench_cmd": "python3 osspr-intake/harness/rssi_stats_runtime.py",
+    "baseline_median_ms": 96.6262,
+    "baseline_noise_pct": 11.338,
+    "tests_pass_on_baseline": true,
+    "workload": "800 updates of one device holding the steady-state 300-sample RSSI buffer (MAX_RSSI_SAMPLES), which is one second of advertisements from about 80 nearby devices.",
+    "notes": "Every advertisement recomputes statistics.median and statistics.variance over all 300 integer samples, and _calculate_confidence computes the variance again with exact Fraction arithmetic. A single sum-of-squares pass matches that variance exactly on integer RSSI and is about 3.5x faster on this buffer."
+  },
+  {
+    "upstream_repo": "smittix/intercept",
+    "head_sha": "6bd91b6a38e5c1d2bb4a8fbe6335d5b384b091f6",
+    "file": "utils/correlation.py",
+    "function": "DeviceCorrelator.correlate",
+    "native_test_cmd": "pytest tests/test_correlation.py::TestDeviceCorrelator -q",
+    "bench_cmd": "python3 osspr-intake/harness/correlate_runtime.py",
+    "baseline_median_ms": 67.9477,
+    "baseline_noise_pct": 4.5205,
+    "tests_pass_on_baseline": true,
+    "workload": "One correlation pass over 200 Wi-Fi and 200 Bluetooth devices with ISO timestamps, as in a busy-office TSCM refresh where the two populations do not overlap in time.",
+    "notes": "_to_observation parses each Bluetooth device's timestamps inside the Wi-Fi loop, so every device is parsed once per pair. Parsing both sides once is local to correlate and about halves this 200x200 pass; caching the lowercased manufacturer and OUI in that same function removes the remaining per-pair string work."
+  }
+]
